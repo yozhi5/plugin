@@ -9,6 +9,15 @@ from collections import defaultdict
 from netaddr import IPAddress
 
 
+interfaces = ['enp','eth']
+
+def isIllegalInterface(line):
+    for interface in interfaces:
+        if re.search(interface, line):
+            return True
+    return False
+
+
 def NetTraffic():
     '''
     Inter-|   Receive                                                |  Transmit
@@ -25,7 +34,8 @@ def NetTraffic():
     netIfs = defaultdict(dict)
 
     for i in lines:
-        if net_reg.search(i) and not (re.search('lo', i) or re.search('bond', i)):
+        if net_reg.search(i) and isIllegalInterface(i) and not (re.search('lo', i) or re.search('bond', i)):
+            #print(i)
             inter = i.strip().split(":")[0]
             res = ' '.join(re.split(' +|\n+', i.strip().split(':')[1])).strip().split(' ')
 
@@ -135,8 +145,11 @@ def get_send_json(metric=None):
 
 def Ifstat():
     netIfs = NetTraffic()
-    sysNetWorks = SYSNetWorks(ifaces=netIfs.keys())
-    wan_face, lan_face = NetIfs(sysNetWorks, ifaces=netIfs.keys())
+    allInterfaces = netIfs.keys()
+    wan_face = list()
+    for interface in allInterfaces:
+        wan_face.append(interface)
+
     metric = defaultdict(dict)
 
     metric['wan']['net.if.in.bytes'] = 0
@@ -144,26 +157,17 @@ def Ifstat():
     metric['wan']['net.if.out.bytes'] = 0
     metric['wan']['net.if.out.errors'] = 0
 
-    metric['lan']['net.if.in.bytes'] = 0
-    metric['lan']['net.if.in.errors'] = 0
-    metric['lan']['net.if.out.bytes'] = 0
-    metric['lan']['net.if.out.errors'] = 0
-
     for face in wan_face:
+        #print(int(netIfs.get(face).get('InBytes')))
         metric['wan']['net.if.in.bytes'] += int(netIfs.get(face).get('InBytes')) * 8
         metric['wan']['net.if.in.errors'] += int(netIfs.get(face).get('InErrors')) * 8
         metric['wan']['net.if.out.bytes'] += int(netIfs.get(face).get('OutBytes')) * 8
         metric['wan']['net.if.out.errors'] += int(netIfs.get(face).get('OutErrors')) * 8
 
-    for face in lan_face:
-        metric['lan']['net.if.in.bytes'] += int(netIfs.get(face).get('InBytes')) * 8
-        metric['lan']['net.if.in.errors'] += int(netIfs.get(face).get('InErrors')) * 8
-        metric['lan']['net.if.out.bytes'] += int(netIfs.get(face).get('OutBytes')) * 8
-        metric['lan']['net.if.out.errors'] += int(netIfs.get(face).get('OutErrors')) * 8
-
     playload = get_send_json(metric)
     r = requests.post("http://127.0.0.1:1988/v1/push", data=json.dumps(playload))
-
+    print(json.dumps(playload))
 
 if __name__ == '__main__':
     Ifstat()
+
